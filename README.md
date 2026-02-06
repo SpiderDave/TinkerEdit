@@ -12,5 +12,5 @@ It is strongly recommended you backup all your saves periodically.
 * Open a command prompt in the TinkerEdit main folder and run various commands.
 
 ## Usage
-Check usage.txt for details.
+Usage: TinkerEdit -extract|-build [filename]
 
