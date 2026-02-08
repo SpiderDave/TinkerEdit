@@ -39,6 +39,17 @@ proc stringToBytes(s: string): seq[byte] =
     for i in 0 ..< s.len:
         result[i] = byte(s[i])
 
+proc readCString(data: seq[byte], pos: var int): string =
+    let start = pos
+    while pos < data.len and data[pos] != 0:
+        inc pos
+    result = bytesToString(data[start ..< pos])
+    inc pos   # skip null terminator
+
+proc writeCString(s: string, buf: var seq[byte]) =
+    buf.add stringToBytes(s)
+    buf.add 0
+
 # ======================
 # COMPRESSION / DECOMPRESSION
 # ======================
@@ -222,6 +233,61 @@ proc parseChunks(data: seq[byte]): seq[Chunk] =
         pos = nextPos
 
 # ======================
+# GRID BUFFERS (SPECIAL)
+# ======================
+
+proc extractGridBuffers(name: string, payload: seq[byte]) =
+    var pos = 0
+    var index = 1
+
+    while pos < payload.len:
+        let typ = readCString(payload, pos)
+
+        var header = typ
+        if typ == "0" or typ == "1":
+            let w = readCString(payload, pos)
+            let h = readCString(payload, pos)
+            header &= " " & w & " " & h
+
+        let data = readCString(payload, pos)
+
+        let headerFile = fmt"data/{name}.{index}.header.txt"
+        let dataFile   = fmt"data/{name}.{index}.txt"
+
+        writeFile(headerFile, header)
+        writeFile(dataFile, data)
+
+        echo "Wrote ", headerFile / ""
+        echo "Wrote ", dataFile / ""
+
+        inc index
+
+proc buildGridBuffers(name: string): seq[byte] =
+    result = @[]
+    var index = 1
+
+    while true:
+        let headerFile = fmt"data/{name}.{index}.header.txt"
+        let dataFile   = fmt"data/{name}.{index}.txt"
+
+        if not fileExists(headerFile):
+            break
+
+        let headerParts = readFile(headerFile).splitWhitespace()
+        let typ = headerParts[0]
+
+        writeCString(typ, result)
+
+        if typ == "0" or typ == "1":
+            writeCString(headerParts[1], result)
+            writeCString(headerParts[2], result)
+
+        let data = readFile(dataFile)
+        writeCString(data, result)
+
+        inc index
+
+# ======================
 # SEGMENT FORMAT CONFIG
 # ======================
 
@@ -332,20 +398,19 @@ proc extract(filename: string) =
         createDir("data")
 
     for c in chunks:
-        if c.name == "END":
-            continue
-        elif c.name == "SHARED_DATA":
+        case c.name
+        of "SHARED_DATA":
             extractSegment(c.name, c.payload, sharedDataFormats)
-        elif c.name == "BASIC_DATA":
+        of "BASIC_DATA":
             extractSegment(c.name, c.payload, basicDataFormats)
-        elif c.name == "STRUCTS":
+        of "STRUCTS":
             extractSegment(c.name, c.payload, structsFormats)
-        elif c.name == "MINIMAP_GENERAL" or c.name == "MINIMAP_SHIP":
+        of "GRIDS_BUFFERS_GENERAL", "GRIDS_BUFFERS_SHIP":
+            extractGridBuffers(c.name, c.payload)
+        of "MINIMAP_GENERAL", "MINIMAP_SHIP":
             decodeMap(bytesToString(c.payload), c.name, 0, 0, "data")
         else:
-            let outFile = fmt"data/{c.name}.dat"
-            writeFile(outFile, c.payload)
-            echo "Wrote ", outFile / "", " (", c.payload.len, " bytes)"
+            discard
 
 # ======================
 # BUILD
@@ -364,6 +429,8 @@ proc build(filename: string) =
             payload = buildSegment(name, basicDataFormats)
         of "STRUCTS":
             payload = buildSegment(name, structsFormats)
+        of "GRIDS_BUFFERS_GENERAL", "GRIDS_BUFFERS_SHIP":
+            payload = buildGridBuffers(name)
         of "END":
             payload = @[]
         of "MINIMAP_GENERAL":
