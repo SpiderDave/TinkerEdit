@@ -2,7 +2,8 @@ import
     os, strutils, strformat,
     resource/resource,
     json,
-    zippy
+    zippy,
+    parseopt
 
 import appinfo
 import TinkerMap
@@ -14,9 +15,11 @@ import TinkerMap
 let prettyPrintJson = true
 let minifyJsonOnBuild = true
 
+var compressionLevel = BestSpeed
+
 let app = newApp(
     name = "TinkerEdit",
-    url = "no url",
+    url = "https://github.com/SpiderDave/TinkerEdit",
     author = "SpiderDave",
     stage = "alpha-release",
     description = "Tinkerlands Save Edit Tool"
@@ -53,12 +56,12 @@ proc decompressToBytes(inPath: string): seq[byte] =
     for i in 0 ..< decompressed.len:
         result[i] = byte(decompressed[i])
 
-proc compressToFile(data: seq[byte], outPath: string) =
+proc compressToFile(data: seq[byte], outPath: string, level:int) =
     var input = newSeq[uint8](data.len)
     for i in 0 ..< data.len:
         input[i] = uint8(data[i])
 
-    let compressed = compress(input, BestCompression, dfZlib)
+    let compressed = compress(input, level, dfZlib)
 
     var f = open(outPath, fmWrite)
     defer: f.close()
@@ -394,24 +397,82 @@ proc build(filename: string) =
         echo "Chunk ", c.name, ": payload=", c.payload.len, " rebuiltData=", rebuiltData.len
     
     echo "Compressing..."
-    compressToFile(rebuiltData, filename)
+    compressToFile(rebuiltData, filename, compressionLevel)
     echo fmt"Wrote to {filename}"
 
 # ======================
 # MAIN
 # ======================
 
-let cmd = if paramCount() >= 1: paramStr(1) else: ""
-let file = if paramCount() >= 2: paramStr(2) else: ""
+var
+  filename = ""
+  cmd = ""
 
-case cmd
-of "-extract":
-    extract(if file.len > 0: file else: "input.bin")
-of "-build":
-    build(if file.len > 0: file else: "output.bin")
-of "-releasetag":
-    echo app.releaseTag
+# Initialize parser
+var p = initOptParser(commandLineParams())
+
+for kind, key, val in p.getopt():
+  case kind
+  of cmdArgument:
+    # First positional argument is treated as filename
+    if filename.len == 0:
+      filename = key
+  of cmdLongOption, cmdShortOption:
+    case key
+    of "extract", "x":
+      cmd = "extract"
+    of "build", "b":
+      cmd = "build"
+    of "releasetag": # undocumented
+      cmd = "releasetag"
+    of "level", "l":
+      if val == "speed":
+        compressionLevel = BestSpeed
+      elif val == "best":
+        compressionLevel = BestCompression
+    of "help", "h":
+        cmd = "help"
+    of "usage": # undocumented
+        cmd = "usage"
+    else:
+      echo "Unknown option: \n", key
+      cmd = "usage"
+  of cmdEnd:
+    break
+
+
+proc info() =
+  echo fmt"{app.name} v{app.version} by {app.author} ({app.url})"
+  echo ""
+  echo "Command-line save editor and rebuild tool for Tinkerlands."
+  echo ""
+
+proc usage() =
+  echo "Usage: TinkerEdit [opts]"
+  echo ""
+  echo "Options:"
+  echo "  -x, --extract:filename          extract save file (default: main.sav)"
+  echo "  -b, --build:filename            rebuild save file (default: main_new.sav)"
+  echo "  -l, --level:best|speed          compression level (default: speed)"
+  echo "  -h, --help                      show this help"
+  echo ""
+  echo "Examples:"
+  echo "  TinkerEdit -x"
+  echo "  TinkerEdit -x:main.sav"
+  echo "  TinkerEdit -b:main_new.sav --level=speed"
+
+# Execute the selected command
+if cmd == "releasetag":
+  echo app.releaseTag
+elif cmd == "extract":
+  extract(if filename.len > 0: filename else: "main.sav")
+elif cmd == "build":
+  build(if filename.len > 0: filename else: "main_new.sav")
+elif cmd == "help":
+  info()
+  usage()
+elif cmd == "usage":
+  usage()
 else:
-    echo app.name, " ", app.version
-    echo "by ", app.author, "\n"
-    echo "Usage: TinkerEdit -extract|-build [filename]"
+  info()
+  usage()
