@@ -17,12 +17,14 @@ Usage: TinkerEdit [opts]
 
 Options:
   -x, --extract:filename          extract save file (default: main.sav)
+  -x, --extract:worldnumber       extract save file by world number
   -b, --build:filename            rebuild save file (default: main_new.sav)
   -l, --level:best|speed          compression level (default: speed)
   -h, --help                      show this help
 
 Examples:
   TinkerEdit -x
+  TinkerEdit -x:1
   TinkerEdit -x:main.sav
   TinkerEdit -b:main_new.sav --level=speed
 ```

@@ -21,7 +21,7 @@ let app = newApp(
     name = "TinkerEdit",
     url = "https://github.com/SpiderDave/TinkerEdit",
     author = "SpiderDave",
-    stage = "alpha-release",
+    stage = "beta-release",
     description = "Tinkerlands Save Edit Tool"
 )
 
@@ -481,15 +481,17 @@ var p = initOptParser(commandLineParams())
 for kind, key, val in p.getopt():
   case kind
   of cmdArgument:
-    # First positional argument is treated as filename
-    if filename.len == 0:
-      filename = key
+    discard
   of cmdLongOption, cmdShortOption:
     case key
     of "extract", "x":
       cmd = "extract"
+      if val.len > 0:          # capture the value if passed
+        filename = val
     of "build", "b":
       cmd = "build"
+      if val.len > 0:          # capture the value if passed
+        filename = val
     of "releasetag": # undocumented
       cmd = "releasetag"
     of "level", "l":
@@ -509,7 +511,7 @@ for kind, key, val in p.getopt():
 
 
 proc info() =
-  echo fmt"{app.name} v{app.version} by {app.author} ({app.url})"
+  echo fmt"{app.name} {app.version} by {app.author} ({app.url})"
   echo ""
   echo "Command-line save editor and rebuild tool for Tinkerlands."
   echo ""
@@ -519,12 +521,14 @@ proc usage() =
   echo ""
   echo "Options:"
   echo "  -x, --extract:filename          extract save file (default: main.sav)"
+  echo "  -x, --extract:worldnumber       extract save file by world number"
   echo "  -b, --build:filename            rebuild save file (default: main_new.sav)"
   echo "  -l, --level:best|speed          compression level (default: speed)"
   echo "  -h, --help                      show this help"
   echo ""
   echo "Examples:"
   echo "  TinkerEdit -x"
+  echo "  TinkerEdit -x:1"
   echo "  TinkerEdit -x:main.sav"
   echo "  TinkerEdit -b:main_new.sav --level=speed"
 
@@ -532,7 +536,26 @@ proc usage() =
 if cmd == "releasetag":
   echo app.releaseTag
 elif cmd == "extract":
-  extract(if filename.len > 0: filename else: "main.sav")
+  var extractFile: string
+  if filename in @["1","2","3","4"]:
+    let saveNum = filename
+    let localApp = getEnv("localappdata")
+    extractFile = fmt"{localApp}/Tinkerlands/worlds/savegame0{saveNum}/main.sav"
+  else:
+    extractFile = if filename.len > 0: filename else: "main.sav"
+
+  extract(extractFile)
+elif cmd == "extract2":
+  var extractFile = if filename.len > 0: filename else: "main.sav"
+
+  # Special handling for numeric save numbers
+  if extractFile in @["1","2","3","4"]:
+    let saveNum = extractFile
+    let localApp = getEnv("localappdata")
+    if localApp.len == 0:
+      quit "Error: LOCALAPPDATA environment variable not set"
+    extractFile = fmt"{localApp}/Tinkerlands/worlds/savegame0{saveNum}/main.sav"
+  extract(extractFile)
 elif cmd == "build":
   build(if filename.len > 0: filename else: "main_new.sav")
 elif cmd == "help":
